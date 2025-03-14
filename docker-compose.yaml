@@ -1,0 +1,33 @@
+version: '3.0'
+services:
+  mysql8:
+    image: mysql:8.0
+    restart: always
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      # - ./script/mysql:/var/lib/mysql
+      - ./script/mysql:/docker-entrypoint-initdb.d
+    ports:
+      - "13306:3306"
+  redis:
+    image: bitnami/redis:latest
+    ports:
+      - "16379:6379"
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+  # webook:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   image: webook:v0.0.1
+  #   depends_on:
+  #     - mysql8
+  #     - redis
+  #   ports:
+  #     - "8081:8081"
+  #   environment:
+  #     - DB_DSN=root:root@tcp(mysql8:3306)/webook?charset=utf8mb4&parseTime=True&loc=Local
+  #     - REDIS_ADDR=redis:6379
+  #   restart: always
