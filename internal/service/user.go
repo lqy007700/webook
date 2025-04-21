@@ -3,14 +3,14 @@ package service
 import (
 	"context"
 	"errors"
+	"golang.org/x/crypto/bcrypt"
 	"webook/internal/domain"
 	"webook/internal/repository"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
 type UserService struct {
 	repo *repository.UserRepository
+	//cache *cache.UserCache
 }
 
 func NewUserService(repo *repository.UserRepository) *UserService {
@@ -39,4 +39,20 @@ func (svc *UserService) Login(ctx context.Context, email, password string) (doma
 		return domain.User{}, errors.New("密码错误")
 	}
 	return u, nil
+}
+
+func (svc *UserService) LoginSms(ctx context.Context, phone string) (domain.User, error) {
+	u, err := svc.repo.FindByPhone(ctx, phone)
+	if err != nil {
+		return domain.User{}, err
+	}
+	return u, nil
+}
+
+func (svc *UserService) Profile(ctx context.Context, id int64) (domain.User, error) {
+	user, err := svc.repo.FindById(ctx, id)
+	if err != nil {
+		return domain.User{}, err
+	}
+	return user, err
 }

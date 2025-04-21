@@ -1,6 +1,7 @@
 package web
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -13,12 +14,14 @@ import (
 )
 
 type UserHandler struct {
-	svc *service.UserService
+	svc     *service.UserService
+	codeSvc *service.CodeService
 }
 
-func NewUserHandler(svc *service.UserService) *UserHandler {
+func NewUserHandler(svc *service.UserService, codeSvc *service.CodeService) *UserHandler {
 	return &UserHandler{
-		svc: svc,
+		svc:     svc,
+		codeSvc: codeSvc,
 	}
 }
 
@@ -30,6 +33,72 @@ func (u *UserHandler) RegisterRouters(s *gin.Engine) {
 	ug.POST("/edit", u.Edit)
 	ug.GET("/profile", u.Profile)
 	ug.GET("/profilejwt", u.ProfileJWT)
+	ug.POST("/login_sms/code/send", u.SendLoginSmsCode)
+	ug.POST("/login_sms/code/login", u.LoginSms)
+}
+
+func (u *UserHandler) LoginSms(ctx *gin.Context) {
+	type Req struct {
+		Phone string `json:"phone"`
+		Code  string `json:"code"`
+	}
+
+	var req Req
+	if err := ctx.Bind(&req); err != nil {
+		ctx.String(http.StatusBadRequest, "参数错误")
+		return
+	}
+
+	const biz = "login"
+	err := u.codeSvc.Verify(ctx, biz, req.Code, req.Phone)
+	if err != nil {
+		ctx.String(http.StatusOK, "验证码错误")
+		return
+	}
+
+	user, err := u.svc.LoginSms(ctx.Request.Context(), req.Phone)
+	if err != nil {
+		ctx.String(http.StatusBadRequest, "登录失败")
+		return
+	}
+
+	claims := UserClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().AddDate(0, 1, 0)),
+		},
+		Uid:       user.Id,
+		UserAgent: ctx.Request.UserAgent(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS512, claims)
+	tokenStr, err := token.SignedString([]byte("eHwX09d&*3KLs0^lm#PqA5RzVcT7NyU4QbFiGj2M8W!n@tYh"))
+	if err != nil {
+		ctx.String(http.StatusInternalServerError, "登录失败")
+		return
+	}
+	ctx.Header("x-jwt-token", tokenStr)
+	ctx.String(http.StatusOK, "登录成功")
+}
+
+func (u *UserHandler) SendLoginSmsCode(ctx *gin.Context) {
+	type Req struct {
+		Phone string `json:"phone"`
+	}
+	var req Req
+	if err := ctx.Bind(&req); err != nil {
+		return
+	}
+
+	const biz = "login"
+	err := u.codeSvc.Send(ctx, biz, req.Phone)
+	switch {
+	case err == nil:
+		ctx.String(http.StatusOK, "短信发送成功")
+	case errors.Is(err, service.ErrCodeSendTooMany):
+		ctx.String(http.StatusOK, "短信发送太频繁")
+	default:
+		ctx.String(http.StatusOK, "短信发送失败")
+	}
 }
 
 func (u *UserHandler) Signup(ctx *gin.Context) {
@@ -41,6 +110,11 @@ func (u *UserHandler) Signup(ctx *gin.Context) {
 
 	var req SignupReq
 	if err := ctx.Bind(&req); err != nil {
+		return
+	}
+
+	if req.Email == "" || req.Password == "" || req.ConfirmPassword == "" {
+		ctx.String(http.StatusBadRequest, "参数错误")
 		return
 	}
 
@@ -135,7 +209,9 @@ func (*UserHandler) Edit(ctx *gin.Context) {
 func (*UserHandler) Profile(ctx *gin.Context) {
 	ctx.String(http.StatusOK, "登录成功")
 }
-func (*UserHandler) ProfileJWT(ctx *gin.Context) {
+func (u *UserHandler) ProfileJWT(ctx *gin.Context) {
+	u.svc.Profile(ctx, 1)
+
 	c, _ := ctx.Get("claim")
 	claims, ok := c.(*UserClaims)
 	if !ok {

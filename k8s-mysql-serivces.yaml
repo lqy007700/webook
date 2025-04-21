@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: webook-mysql
+spec:
+  selector:
+    app: webook-mysql
+  ports:
+    - protocol: TCP
+      port: 13306 # 集群内部访问
+      targetPort: 3306 # 转发流量到这
+      nodePort: 30001 # 集群外部访问
+  type: NodePort
+  

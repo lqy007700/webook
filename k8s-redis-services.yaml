@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: webook-redis
+spec:
+  selector:
+    app: webook-redis
+  ports:
+    - protocol: TCP
+      port: 16379 # 集群内部访问
+      targetPort: 6379 # 转发流量到这
+      nodePort: 30002 # 集群外部访问
+  type: NodePort
+  
